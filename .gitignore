@@ -1,2 +1,8 @@
 /target
 /.vscode
+.opencode
+/web/node_modules
+/web/coverage
+/artifacts
+/dist
+*.log

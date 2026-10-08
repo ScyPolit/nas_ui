@@ -26,14 +26,14 @@ fn head_dir(server: TestServer) -> Result<(), Error> {
 }
 
 #[rstest]
-fn get_dir_404(server: TestServer) -> Result<(), Error> {
+fn get_dir_404(#[with(&["--no-upload"])] server: TestServer) -> Result<(), Error> {
     let resp = reqwest::blocking::get(format!("{}404/", server.url()))?;
     assert_eq!(resp.status(), 404);
     Ok(())
 }
 
 #[rstest]
-fn head_dir_404(server: TestServer) -> Result<(), Error> {
+fn head_dir_404(#[with(&["--no-upload"])] server: TestServer) -> Result<(), Error> {
     let resp = fetch!(b"HEAD", format!("{}404/", server.url())).send()?;
     assert_eq!(resp.status(), 404);
     Ok(())

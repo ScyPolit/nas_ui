@@ -1,0 +1,140 @@
+export const zhCN = {
+  app: {
+    name: 'Dufs 局域网网盘',
+    subtitle: '安全、轻量的本地文件空间',
+  },
+  nav: {
+    home: '首页',
+    files: '全部文件',
+    recentViewed: '最近看过',
+    recentSaved: '最近保存',
+  },
+  action: {
+    upload: '上传',
+    uploadFile: '上传文件',
+    uploadFolder: '上传文件夹',
+    newFolder: '新建文件夹',
+    refresh: '刷新',
+    settings: '设置',
+    search: '搜索',
+    open: '打开',
+    preview: '预览',
+    download: '下载',
+    downloadFolder: '打包下载',
+    copyLink: '复制链接',
+    rename: '重命名',
+    remove: '删除',
+    properties: '属性',
+    retry: '重试',
+    cancel: '取消',
+    close: '关闭',
+    clear: '清空',
+    locate: '打开所在位置',
+  },
+  common: {
+    loading: '正在加载…',
+    noData: '暂无数据',
+    unavailable: '暂不可用',
+    unknown: '未知',
+    file: '文件',
+    folder: '文件夹',
+    modifiedAt: '修改日期',
+    type: '类型',
+    size: '大小',
+    name: '名称',
+  },
+  home: {
+    title: '你好，欢迎回来',
+    description: '查看存储状态，快速访问和管理局域网中的共享文件。',
+    allFiles: '浏览全部文件',
+    folders: '文件目录',
+    foldersHint: '快速进入共享根目录中的文件夹',
+    recentViewed: '最近看过',
+    recentSaved: '最近保存',
+    viewAll: '查看全部',
+    dropTitle: '将文件拖拽到此处上传',
+    dropHint: '支持文件和文件夹，也可以点击选择文件',
+  },
+  storage: {
+    title: '存储空间',
+    diskTotal: '磁盘容量',
+    diskUsed: '磁盘已使用',
+    diskFree: '磁盘剩余',
+    available: '当前进程可用',
+    sharedUsed: '共享文件夹占用',
+    files: '文件总数',
+    folders: '文件夹总数',
+    scannedAt: '最近统计',
+    scanning: '正在后台统计共享目录，不会阻塞文件访问',
+    refresh: '重新统计',
+    normal: '空间充足',
+    warning: '磁盘空间开始紧张',
+    danger: '磁盘空间不足，请尽快清理',
+    distribution: '文件类型分布',
+  },
+  explorer: {
+    title: '全部文件',
+    searchPlaceholder: '搜索当前目录中的文件',
+    empty: '此文件夹为空',
+    noResults: '没有找到匹配的文件',
+    up: '返回上一级',
+    selected: '已选择 {count} 项',
+    views: {
+      'extra-large': '超大图标',
+      large: '大图标',
+      medium: '中等图标',
+      small: '小图标',
+      list: '列表',
+      details: '详细信息',
+    },
+  },
+  preview: {
+    title: '文件预览',
+    unsupported: '暂不支持预览此文件类型',
+    tooLarge: '文件过大，为保护浏览器性能，请下载后查看。',
+    loadFailed: '文件预览加载失败',
+    page: '第 {current} / {total} 页',
+  },
+  upload: {
+    title: '上传任务',
+    waiting: '等待上传',
+    uploading: '正在上传',
+    completed: '上传完成',
+    failed: '上传失败',
+    canceled: '已取消',
+    conflict: '目标位置已存在同名文件',
+    overwrite: '覆盖原文件',
+    keepBoth: '保留两者',
+    skip: '跳过',
+  },
+  settings: {
+    title: '界面设置',
+    appearance: '外观',
+    theme: '主题',
+    system: '跟随系统',
+    light: '浅色',
+    dark: '深色',
+    defaultView: '默认文件视图',
+    defaultSort: '默认排序',
+    thumbnails: '显示图片缩略图',
+    autoRefresh: '自动刷新文件目录',
+    showExtension: '显示文件扩展名',
+    clearHistory: '清空最近看过历史',
+  },
+} as const
+
+interface NestedRecord {
+  [key: string]: string | NestedRecord
+}
+
+export function t(path: string, params: Record<string, string | number> = {}): string {
+  const value = path.split('.').reduce<string | NestedRecord | undefined>((current, key) => {
+    if (typeof current === 'string' || current === undefined) return undefined
+    return current[key]
+  }, zhCN as unknown as NestedRecord)
+  if (typeof value !== 'string') return path
+  return Object.entries(params).reduce(
+    (text, [key, replacement]) => text.replaceAll(`{${key}}`, String(replacement)),
+    value,
+  )
+}

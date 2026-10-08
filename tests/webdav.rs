@@ -105,7 +105,7 @@ fn mkcol_dir(#[with(&["-A"])] server: TestServer) -> Result<(), Error> {
 }
 
 #[rstest]
-fn mkcol_not_allow_upload(server: TestServer) -> Result<(), Error> {
+fn mkcol_not_allow_upload(#[with(&["--no-upload"])] server: TestServer) -> Result<(), Error> {
     let resp = fetch!(b"MKCOL", format!("{}newdir", server.url())).send()?;
     assert_eq!(resp.status(), 403);
     Ok(())
@@ -131,7 +131,7 @@ fn copy_file(#[with(&["-A"])] server: TestServer) -> Result<(), Error> {
 }
 
 #[rstest]
-fn copy_not_allow_upload(server: TestServer) -> Result<(), Error> {
+fn copy_not_allow_upload(#[with(&["--no-upload"])] server: TestServer) -> Result<(), Error> {
     let new_url = format!("{}test2.html", server.url());
     let resp = fetch!(b"COPY", format!("{}test.html", server.url()))
         .header("Destination", &new_url)
@@ -166,7 +166,9 @@ fn move_file(#[with(&["-A"])] server: TestServer) -> Result<(), Error> {
 }
 
 #[rstest]
-fn move_not_allow_upload(#[with(&["--allow-delete"])] server: TestServer) -> Result<(), Error> {
+fn move_not_allow_upload(
+    #[with(&["--allow-delete", "--no-upload"])] server: TestServer,
+) -> Result<(), Error> {
     let origin_url = format!("{}test.html", server.url());
     let new_url = format!("{}test2.html", server.url());
     let resp = fetch!(b"MOVE", &origin_url)

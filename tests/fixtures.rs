@@ -3,6 +3,8 @@ use assert_fs::prelude::*;
 use port_check::free_local_port;
 use reqwest::Url;
 use rstest::fixture;
+use socket2::{Domain, Protocol, Socket, Type};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpListener};
 use std::process::{Child, Command, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -114,7 +116,24 @@ pub fn tmpdir() -> TempDir {
 #[fixture]
 #[allow(dead_code)]
 pub fn port() -> u16 {
-    free_local_port().expect("Couldn't find a free local port")
+    for _ in 0..50 {
+        let port = free_local_port().expect("Couldn't find a free local port");
+        let ipv4_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port));
+        let ipv4 = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)).unwrap();
+        if ipv4.bind(&ipv4_addr.into()).is_err() {
+            continue;
+        }
+        if TcpListener::bind("[::1]:0").is_ok() {
+            let ipv6_addr = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, port, 0, 0));
+            let ipv6 = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP)).unwrap();
+            ipv6.set_only_v6(true).unwrap();
+            if ipv6.bind(&ipv6_addr.into()).is_err() {
+                continue;
+            }
+        }
+        return port;
+    }
+    panic!("Couldn't find a port available for both IPv4 and IPv6")
 }
 
 /// Run dufs as a server; Start with a temporary directory, a free port and some

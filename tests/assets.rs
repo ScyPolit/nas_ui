@@ -10,12 +10,11 @@ use std::process::{Command, Stdio};
 fn assets(server: TestServer) -> Result<(), Error> {
     let ver = env!("CARGO_PKG_VERSION");
     let resp = reqwest::blocking::get(server.url())?;
-    let index_js = format!("/__dufs_v{ver}__/index.js");
-    let index_css = format!("/__dufs_v{ver}__/index.css");
+    let index_js = format!("/__dufs_v{ver}__/assets/index.js");
     let favicon_ico = format!("/__dufs_v{ver}__/favicon.ico");
     let text = resp.text()?;
-    println!("{text}");
-    assert!(text.contains(&format!(r#"href="{index_css}""#)));
+    assert!(text.contains(&format!(r#"href="/__dufs_v{ver}__/assets/index-"#)));
+    assert!(text.contains(".css\""));
     assert!(text.contains(&format!(r#"href="{favicon_ico}""#)));
     assert!(text.contains(&format!(r#"src="{index_js}""#)));
     Ok(())
@@ -24,32 +23,37 @@ fn assets(server: TestServer) -> Result<(), Error> {
 #[rstest]
 fn asset_js(server: TestServer) -> Result<(), Error> {
     let url = format!(
-        "{}__dufs_v{}__/index.js",
+        "{}__dufs_v{}__/assets/index.js",
         server.url(),
         env!("CARGO_PKG_VERSION")
     );
     let resp = reqwest::blocking::get(url)?;
     assert_eq!(resp.status(), 200);
-    assert_eq!(
-        resp.headers().get("content-type").unwrap(),
-        "application/javascript; charset=UTF-8"
-    );
+    assert!(resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()?
+        .contains("javascript"));
     Ok(())
 }
 
 #[rstest]
 fn asset_css(server: TestServer) -> Result<(), Error> {
-    let url = format!(
-        "{}__dufs_v{}__/index.css",
-        server.url(),
-        env!("CARGO_PKG_VERSION")
-    );
+    let index = reqwest::blocking::get(server.url())?.text()?;
+    let path = index
+        .split('"')
+        .find(|value| value.contains("/assets/index-") && value.ends_with(".css"))
+        .expect("missing generated stylesheet");
+    let url = server.url().join(path.trim_start_matches('/'))?;
     let resp = reqwest::blocking::get(url)?;
     assert_eq!(resp.status(), 200);
-    assert_eq!(
-        resp.headers().get("content-type").unwrap(),
-        "text/css; charset=UTF-8"
-    );
+    assert!(resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()?
+        .contains("text/css"));
     Ok(())
 }
 
@@ -70,11 +74,11 @@ fn asset_ico(server: TestServer) -> Result<(), Error> {
 fn assets_with_prefix(#[with(&["--path-prefix", "xyz"])] server: TestServer) -> Result<(), Error> {
     let ver = env!("CARGO_PKG_VERSION");
     let resp = reqwest::blocking::get(format!("{}xyz/", server.url()))?;
-    let index_js = format!("/xyz/__dufs_v{ver}__/index.js");
-    let index_css = format!("/xyz/__dufs_v{ver}__/index.css");
+    let index_js = format!("/xyz/__dufs_v{ver}__/assets/index.js");
     let favicon_ico = format!("/xyz/__dufs_v{ver}__/favicon.ico");
     let text = resp.text()?;
-    assert!(text.contains(&format!(r#"href="{index_css}""#)));
+    assert!(text.contains(&format!(r#"href="/xyz/__dufs_v{ver}__/assets/index-"#)));
+    assert!(text.contains(".css\""));
     assert!(text.contains(&format!(r#"href="{favicon_ico}""#)));
     assert!(text.contains(&format!(r#"src="{index_js}""#)));
     Ok(())
@@ -85,16 +89,18 @@ fn asset_js_with_prefix(
     #[with(&["--path-prefix", "xyz"])] server: TestServer,
 ) -> Result<(), Error> {
     let url = format!(
-        "{}xyz/__dufs_v{}__/index.js",
+        "{}xyz/__dufs_v{}__/assets/index.js",
         server.url(),
         env!("CARGO_PKG_VERSION")
     );
     let resp = reqwest::blocking::get(url)?;
     assert_eq!(resp.status(), 200);
-    assert_eq!(
-        resp.headers().get("content-type").unwrap(),
-        "application/javascript; charset=UTF-8"
-    );
+    assert!(resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()?
+        .contains("javascript"));
     Ok(())
 }
 

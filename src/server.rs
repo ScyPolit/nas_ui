@@ -3,6 +3,7 @@
 use crate::auth::{www_authenticate, AccessPaths, AccessPerm};
 use crate::http_utils::{body_full, IncomingStream, LengthLimitedStream};
 use crate::noscript::{detect_noscript, generate_noscript_html};
+use crate::storage::StorageService;
 use crate::utils::{decode_uri, encode_uri, get_file_name, glob, parse_range, try_get_file_name};
 use crate::Args;
 
@@ -27,6 +28,7 @@ use hyper::{
     },
     Method, StatusCode, Uri,
 };
+use include_dir::{include_dir, Dir};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
@@ -52,14 +54,14 @@ pub type Request = hyper::Request<Incoming>;
 pub type Response = hyper::Response<BoxBody<Bytes, anyhow::Error>>;
 
 const INDEX_HTML: &str = include_str!("../assets/index.html");
-const INDEX_CSS: &str = include_str!("../assets/index.css");
-const INDEX_JS: &str = include_str!("../assets/index.js");
-const FAVICON_ICO: &[u8] = include_bytes!("../assets/favicon.ico");
+static EMBEDDED_ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/assets");
 const INDEX_NAME: &str = "index.html";
 const BUF_SIZE: usize = 65536;
 const EDITABLE_TEXT_MAX_SIZE: u64 = 4194304; // 4M
 const RESUMABLE_UPLOAD_MIN_SIZE: u64 = 20971520; // 20M
+const THUMBNAIL_MAX_SOURCE_SIZE: u64 = 104857600; // 100M
 const HEALTH_CHECK_PATH: &str = "__dufs__/health";
+const STORAGE_PATH: &str = "__dufs__/storage";
 pub const MAX_SUBPATHS_COUNT: u64 = 1000;
 
 pub struct Server {
@@ -68,6 +70,7 @@ pub struct Server {
     html: Cow<'static, str>,
     single_file_req_paths: Vec<String>,
     running: Arc<AtomicBool>,
+    storage: StorageService,
 }
 
 impl Server {
@@ -79,7 +82,7 @@ impl Server {
                 args.uri_prefix[0..args.uri_prefix.len() - 1].to_string(),
                 encode_uri(&format!(
                     "{}{}",
-                    &args.uri_prefix,
+                    args.uri_prefix,
                     get_file_name(&args.serve_path)
                 )),
             ]
@@ -90,9 +93,19 @@ impl Server {
             Some(path) => Cow::Owned(std::fs::read_to_string(path.join("index.html"))?),
             None => Cow::Borrowed(INDEX_HTML),
         };
+        let storage_root = if args.path_is_file {
+            args.serve_path
+                .parent()
+                .unwrap_or(&args.serve_path)
+                .to_path_buf()
+        } else {
+            args.serve_path.clone()
+        };
+        let storage = StorageService::new(storage_root, args.hidden.clone(), running.clone());
         Ok(Self {
             args,
             running,
+            storage,
             single_file_req_paths,
             assets_prefix,
             html,
@@ -144,6 +157,10 @@ impl Server {
         let req_path = req.uri().path();
         let headers = req.headers();
         let method = req.method().clone();
+        let query = req.uri().query().unwrap_or_default();
+        let mut query_params: HashMap<String, String> = form_urlencoded::parse(query.as_bytes())
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
 
         let relative_path = match self.resolve_path(req_path) {
             Some(v) => v,
@@ -155,7 +172,7 @@ impl Server {
 
         if method == Method::GET
             && self
-                .handle_internal(&relative_path, headers, &mut res)
+                .handle_internal(&relative_path, &query_params, headers, &mut res)
                 .await?
         {
             return Ok(res);
@@ -176,11 +193,6 @@ impl Server {
         }
 
         let authorization = headers.get(AUTHORIZATION);
-
-        let query = req.uri().query().unwrap_or_default();
-        let mut query_params: HashMap<String, String> = form_urlencoded::parse(query.as_bytes())
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
 
         let guard = self.args.auth.guard(
             &relative_path,
@@ -364,6 +376,9 @@ impl Server {
                         } else {
                             status_forbid(&mut res);
                         }
+                    } else if query_params.contains_key("thumbnail") {
+                        self.handle_thumbnail(path, &query_params, head_only, &mut res)
+                            .await?;
                     } else {
                         self.handle_send_file(path, headers, head_only, &mut res)
                             .await?;
@@ -551,6 +566,7 @@ impl Server {
         }
 
         *res.status_mut() = status;
+        self.storage.mark_dirty();
 
         Ok(())
     }
@@ -562,6 +578,7 @@ impl Server {
         }
 
         status_no_content(res);
+        self.storage.mark_dirty();
         Ok(())
     }
 
@@ -794,6 +811,7 @@ impl Server {
     async fn handle_internal(
         &self,
         req_path: &str,
+        query_params: &HashMap<String, String>,
         headers: &HeaderMap<HeaderValue>,
         res: &mut Response,
     ) -> Result<bool> {
@@ -808,29 +826,16 @@ impl Server {
                         return Ok(true);
                     }
                 }
-                None => match name {
-                    "index.js" => {
-                        *res.body_mut() = body_full(INDEX_JS);
-                        res.headers_mut().insert(
-                            "content-type",
-                            HeaderValue::from_static("application/javascript; charset=UTF-8"),
-                        );
-                    }
-                    "index.css" => {
-                        *res.body_mut() = body_full(INDEX_CSS);
-                        res.headers_mut().insert(
-                            "content-type",
-                            HeaderValue::from_static("text/css; charset=UTF-8"),
-                        );
-                    }
-                    "favicon.ico" => {
-                        *res.body_mut() = body_full(FAVICON_ICO);
+                None => match EMBEDDED_ASSETS.get_file(name) {
+                    Some(file) => {
+                        *res.body_mut() = body_full(file.contents());
+                        let content_type = mime_guess::from_path(name)
+                            .first_or_octet_stream()
+                            .to_string();
                         res.headers_mut()
-                            .insert("content-type", HeaderValue::from_static("image/x-icon"));
+                            .insert("content-type", HeaderValue::from_str(&content_type)?);
                     }
-                    _ => {
-                        status_not_found(res);
-                    }
+                    None => status_not_found(res),
                 },
             }
             res.headers_mut().insert(
@@ -847,6 +852,18 @@ impl Server {
                 .typed_insert(ContentType::from(mime_guess::mime::APPLICATION_JSON));
 
             *res.body_mut() = body_full(r#"{"status":"OK"}"#);
+            Ok(true)
+        } else if req_path == STORAGE_PATH {
+            let force_refresh = query_params.contains_key("refresh");
+            let snapshot = self.storage.get(force_refresh).await;
+            let output = serde_json::to_vec(&snapshot)?;
+            res.headers_mut()
+                .typed_insert(ContentType::from(mime_guess::mime::APPLICATION_JSON));
+            res.headers_mut()
+                .typed_insert(ContentLength(output.len() as u64));
+            res.headers_mut()
+                .typed_insert(CacheControl::new().with_no_store());
+            *res.body_mut() = body_full(output);
             Ok(true)
         } else {
             Ok(false)
@@ -1035,12 +1052,11 @@ impl Server {
         res.headers_mut()
             .typed_insert(ContentType::from(mime_guess::mime::TEXT_HTML_UTF_8));
         let index_data = STANDARD.encode(serde_json::to_string(&data)?);
+        let assets_url = format!("{}{}", self.args.uri_prefix, self.assets_prefix);
         let output = self
             .html
-            .replace(
-                "__ASSETS_PREFIX__",
-                &format!("{}{}", self.args.uri_prefix, self.assets_prefix),
-            )
+            .replace("/__ASSETS_PREFIX__/", &assets_url)
+            .replace("__ASSETS_PREFIX__", &assets_url)
             .replace("__INDEX_DATA__", &index_data);
         res.headers_mut()
             .typed_insert(ContentLength(output.len() as u64));
@@ -1050,6 +1066,57 @@ impl Server {
             return Ok(());
         }
         *res.body_mut() = body_full(output);
+        Ok(())
+    }
+
+    async fn handle_thumbnail(
+        &self,
+        path: &Path,
+        query_params: &HashMap<String, String>,
+        head_only: bool,
+        res: &mut Response,
+    ) -> Result<()> {
+        let metadata = fs::metadata(path).await?;
+        if metadata.len() > THUMBNAIL_MAX_SOURCE_SIZE {
+            status_bad_request(res, "Image is too large for thumbnail generation");
+            return Ok(());
+        }
+        let dimension = query_params
+            .get("thumbnail")
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(256)
+            .clamp(64, 512);
+        let path = path.to_path_buf();
+        let output = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
+            let mut reader = image::ImageReader::open(path)?.with_guessed_format()?;
+            let mut limits = image::Limits::default();
+            limits.max_image_width = Some(32_768);
+            limits.max_image_height = Some(32_768);
+            limits.max_alloc = Some(256 * 1024 * 1024);
+            reader.limits(limits);
+            let image = reader.decode()?;
+            let thumbnail = image.thumbnail(dimension, dimension);
+            let mut output = std::io::Cursor::new(Vec::new());
+            thumbnail.write_to(&mut output, image::ImageFormat::WebP)?;
+            Ok(output.into_inner())
+        })
+        .await??;
+
+        res.headers_mut()
+            .insert(CONTENT_TYPE, HeaderValue::from_static("image/webp"));
+        res.headers_mut()
+            .typed_insert(ContentLength(output.len() as u64));
+        res.headers_mut().insert(
+            "cache-control",
+            HeaderValue::from_static("private, max-age=3600"),
+        );
+        res.headers_mut().insert(
+            "x-content-type-options",
+            HeaderValue::from_static("nosniff"),
+        );
+        if !head_only {
+            *res.body_mut() = body_full(output);
+        }
         Ok(())
     }
 
@@ -1146,6 +1213,7 @@ impl Server {
     async fn handle_mkcol(&self, path: &Path, res: &mut Response) -> Result<()> {
         fs::create_dir_all(path).await?;
         *res.status_mut() = StatusCode::CREATED;
+        self.storage.mark_dirty();
         Ok(())
     }
 
@@ -1173,6 +1241,7 @@ impl Server {
         fs::copy(path, &dest).await?;
 
         status_no_content(res);
+        self.storage.mark_dirty();
         Ok(())
     }
 
@@ -1194,6 +1263,7 @@ impl Server {
         fs::rename(path, &dest).await?;
 
         status_no_content(res);
+        self.storage.mark_dirty();
         Ok(())
     }
 
@@ -1320,11 +1390,10 @@ impl Server {
                 .typed_insert(ContentType::from(mime_guess::mime::TEXT_HTML_UTF_8));
 
             let index_data = STANDARD.encode(serde_json::to_string(&data)?);
+            let assets_url = format!("{}{}", self.args.uri_prefix, self.assets_prefix);
             self.html
-                .replace(
-                    "__ASSETS_PREFIX__",
-                    &format!("{}{}", self.args.uri_prefix, self.assets_prefix),
-                )
+                .replace("/__ASSETS_PREFIX__/", &assets_url)
+                .replace("__ASSETS_PREFIX__", &assets_url)
                 .replace("__INDEX_DATA__", &index_data)
         };
         res.headers_mut()
@@ -1585,7 +1654,7 @@ impl PathItem {
             LocalResult::Single(v) => format!("{}", v.format("%a, %d %b %Y %H:%M:%S GMT")),
             _ => String::new(),
         };
-        let mut href = encode_uri(&format!("{}{}", prefix, &self.name));
+        let mut href = encode_uri(&format!("{}{}", prefix, self.name));
         if self.is_dir() && !href.ends_with('/') {
             href.push('/');
         }
