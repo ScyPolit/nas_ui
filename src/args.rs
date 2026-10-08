@@ -117,6 +117,14 @@ pub fn build_cli() -> Command {
                 .help("Allow upload files/folders"),
         )
         .arg(
+            Arg::new("no-upload")
+                .env("DUFS_NO_UPLOAD")
+                .hide_env(true)
+                .long("no-upload")
+                .action(ArgAction::SetTrue)
+                .help("Disable uploads (uploads are enabled by default)"),
+        )
+        .arg(
             Arg::new("allow-delete")
                 .env("DUFS_ALLOW_DELETE")
 				.hide_env(true)
@@ -133,6 +141,14 @@ pub fn build_cli() -> Command {
                 .help("Allow search files/folders"),
         )
         .arg(
+            Arg::new("no-search")
+                .env("DUFS_NO_SEARCH")
+                .hide_env(true)
+                .long("no-search")
+                .action(ArgAction::SetTrue)
+                .help("Disable search (search is enabled by default)"),
+        )
+        .arg(
             Arg::new("allow-symlink")
                 .env("DUFS_ALLOW_SYMLINK")
 				.hide_env(true)
@@ -147,6 +163,14 @@ pub fn build_cli() -> Command {
                 .long("allow-archive")
                 .action(ArgAction::SetTrue)
                 .help("Allow download folders as archive file"),
+        )
+        .arg(
+            Arg::new("no-archive")
+                .env("DUFS_NO_ARCHIVE")
+                .hide_env(true)
+                .long("no-archive")
+                .action(ArgAction::SetTrue)
+                .help("Disable folder archives (archives are enabled by default)"),
         )
         .arg(
             Arg::new("allow-hash")
@@ -284,10 +308,13 @@ pub struct Args {
     #[serde(deserialize_with = "deserialize_access_control")]
     pub auth: AccessControl,
     pub allow_all: bool,
+    #[default(true)]
     pub allow_upload: bool,
     pub allow_delete: bool,
+    #[default(true)]
     pub allow_search: bool,
     pub allow_symlink: bool,
+    #[default(true)]
     pub allow_archive: bool,
     pub allow_hash: bool,
     pub render_index: bool,
@@ -344,7 +371,7 @@ impl Args {
         args.uri_prefix = if args.path_prefix.is_empty() {
             "/".to_owned()
         } else {
-            format!("/{}/", &encode_uri(&args.path_prefix))
+            format!("/{}/", encode_uri(&args.path_prefix))
         };
 
         if let Some(hidden) = matches.get_many::<String>("hidden") {
@@ -390,6 +417,16 @@ impl Args {
         }
         if !args.allow_archive {
             args.allow_archive = allow_all || matches.get_flag("allow-archive");
+        }
+
+        if matches.get_flag("no-upload") {
+            args.allow_upload = false;
+        }
+        if matches.get_flag("no-search") {
+            args.allow_search = false;
+        }
+        if matches.get_flag("no-archive") {
+            args.allow_archive = false;
         }
         if !args.render_index {
             args.render_index = matches.get_flag("render-index");

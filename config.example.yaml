@@ -1,0 +1,21 @@
+serve-path: 'D:\SharedFiles'
+bind: 0.0.0.0
+port: 5000
+path-prefix: ''
+hidden:
+  - '*.tmp'
+  - '*.lock'
+
+# 现代局域网模式默认允许上传、搜索和目录 ZIP 下载，但不允许删除、覆盖和在线编辑。
+allow-upload: true
+allow-search: true
+allow-archive: true
+allow-delete: false
+allow-symlink: false
+allow-hash: false
+enable-cors: false
+render-index: false
+render-try-index: false
+render-spa: false
+compress: low
+log-format: '$remote_addr "$request" $status $http_user_agent'

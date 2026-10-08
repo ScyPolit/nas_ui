@@ -53,7 +53,7 @@ fn render_try_index3(
 }
 
 #[rstest]
-#[case(server(&["--render-try-index"] as &[&str]), false)]
+#[case(server(&["--render-try-index", "--no-search"] as &[&str]), false)]
 #[case(server(&["--render-try-index", "--allow-search"] as &[&str]), true)]
 fn render_try_index4(#[case] server: TestServer, #[case] searched: bool) -> Result<(), Error> {
     let resp = reqwest::blocking::get(format!("{}{}?q={}", server.url(), DIR_NO_INDEX, BIN_FILE))?;

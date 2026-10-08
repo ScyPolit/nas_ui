@@ -5,10 +5,10 @@ use fixtures::{server, Error, TestServer};
 use rstest::rstest;
 
 #[rstest]
-fn default_not_allow_upload(server: TestServer) -> Result<(), Error> {
+fn default_allow_upload(server: TestServer) -> Result<(), Error> {
     let url = format!("{}file1", server.url());
     let resp = fetch!(b"PUT", &url).body(b"abc".to_vec()).send()?;
-    assert_eq!(resp.status(), 403);
+    assert_eq!(resp.status(), 201);
     Ok(())
 }
 
@@ -21,16 +21,16 @@ fn default_not_allow_delete(server: TestServer) -> Result<(), Error> {
 }
 
 #[rstest]
-fn default_not_allow_archive(server: TestServer) -> Result<(), Error> {
+fn default_allow_archive(server: TestServer) -> Result<(), Error> {
     let resp = reqwest::blocking::get(format!("{}?zip", server.url()))?;
-    assert_eq!(resp.status(), 404);
+    assert_eq!(resp.status(), 200);
     Ok(())
 }
 
 #[rstest]
-fn default_not_exist_dir(server: TestServer) -> Result<(), Error> {
+fn default_allows_upload_target_dir(server: TestServer) -> Result<(), Error> {
     let resp = reqwest::blocking::get(format!("{}404/", server.url()))?;
-    assert_eq!(resp.status(), 404);
+    assert_eq!(resp.status(), 200);
     Ok(())
 }
 
@@ -44,6 +44,21 @@ fn allow_upload_not_exist_dir(
 }
 
 #[rstest]
+fn explicit_no_upload(#[with(&["--no-upload"])] server: TestServer) -> Result<(), Error> {
+    let url = format!("{}file1", server.url());
+    let resp = fetch!(b"PUT", &url).body(b"abc".to_vec()).send()?;
+    assert_eq!(resp.status(), 403);
+    Ok(())
+}
+
+#[rstest]
+fn explicit_no_archive(#[with(&["--no-archive"])] server: TestServer) -> Result<(), Error> {
+    let resp = reqwest::blocking::get(format!("{}?zip", server.url()))?;
+    assert_eq!(resp.status(), 404);
+    Ok(())
+}
+
+#[rstest]
 fn allow_upload_no_override(#[with(&["--allow-upload"])] server: TestServer) -> Result<(), Error> {
     let url = format!("{}index.html", server.url());
     let resp = fetch!(b"PUT", &url).body(b"abc".to_vec()).send()?;
@@ -52,7 +67,9 @@ fn allow_upload_no_override(#[with(&["--allow-upload"])] server: TestServer) -> 
 }
 
 #[rstest]
-fn allow_delete_no_override(#[with(&["--allow-delete"])] server: TestServer) -> Result<(), Error> {
+fn allow_delete_no_override(
+    #[with(&["--allow-delete", "--no-upload"])] server: TestServer,
+) -> Result<(), Error> {
     let url = format!("{}index.html", server.url());
     let resp = fetch!(b"PUT", &url).body(b"abc".to_vec()).send()?;
     assert_eq!(resp.status(), 403);

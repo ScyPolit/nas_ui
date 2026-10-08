@@ -33,12 +33,19 @@ fn bind_ipv4_ipv6(
     #[case] bind_ipv4: bool,
     #[case] bind_ipv6: bool,
 ) -> Result<(), Error> {
+    let client = reqwest::blocking::Client::builder().no_proxy().build()?;
     assert_eq!(
-        reqwest::blocking::get(format!("http://127.0.0.1:{}", server.port()).as_str()).is_ok(),
+        client
+            .get(format!("http://127.0.0.1:{}", server.port()))
+            .send()
+            .is_ok(),
         bind_ipv4
     );
     assert_eq!(
-        reqwest::blocking::get(format!("http://[::1]:{}", server.port()).as_str()).is_ok(),
+        client
+            .get(format!("http://[::1]:{}", server.port()))
+            .send()
+            .is_ok(),
         bind_ipv6
     );
 

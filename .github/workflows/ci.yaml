@@ -31,8 +31,24 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
+    - name: Set up Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+
+    - name: Build and test web UI
+      working-directory: web
+      run: |
+        npm ci
+        npm test
+        npm run build
+
     - name: Install Rust Toolchain Components
       uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
 
     - uses: Swatinem/rust-cache@v2
 
