@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { api } from '@/api/dufs'
 import { filesChanged } from '@/stores/files'
 import { extensionOf, joinPath } from '@/utils/files'
+import { createId } from '@/utils/browser'
 
 export type UploadStatus = 'queued' | 'checking' | 'conflict' | 'uploading' | 'completed' | 'failed' | 'canceled' | 'skipped'
 
@@ -40,7 +41,7 @@ export const useUploadsStore = defineStore('uploads', () => {
     const created = files.map((file) => {
       const relative = file.webkitRelativePath || file.name
       return {
-        id: crypto.randomUUID(),
+        id: createId(),
         file,
         destination: joinPath(targetPath, relative),
         status: 'queued' as const,

@@ -134,7 +134,7 @@ export function t(path: string, params: Record<string, string | number> = {}): s
   }, zhCN as unknown as NestedRecord)
   if (typeof value !== 'string') return path
   return Object.entries(params).reduce(
-    (text, [key, replacement]) => text.replaceAll(`{${key}}`, String(replacement)),
+    (text, [key, replacement]) => text.split(`{${key}}`).join(String(replacement)),
     value,
   )
 }

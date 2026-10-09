@@ -9,7 +9,8 @@ const CODE_EXTENSIONS = new Set(['c', 'cpp', 'cs', 'css', 'go', 'h', 'html', 'ja
 const TEXT_EXTENSIONS = new Set(['csv', 'ini', 'log', 'md', 'json', 'txt', 'xml', 'yaml', 'yml', ...CODE_EXTENSIONS])
 
 export function extensionOf(name: string): string {
-  const base = name.split('/').at(-1) ?? name
+  const parts = name.split('/')
+  const base = parts[parts.length - 1] ?? name
   const index = base.lastIndexOf('.')
   return index > 0 ? base.slice(index + 1).toLowerCase() : ''
 }
@@ -50,7 +51,8 @@ export function fileTypeLabel(item: Pick<PathItem, 'name' | 'path_type'>): strin
 }
 
 export function baseName(path: string): string {
-  return path.split('/').filter(Boolean).at(-1) ?? ''
+  const parts = path.split('/').filter(Boolean)
+  return parts[parts.length - 1] ?? ''
 }
 
 export function parentPath(path: string): string {

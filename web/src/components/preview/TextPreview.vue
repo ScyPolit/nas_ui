@@ -13,6 +13,8 @@ import sql from 'highlight.js/lib/languages/sql'
 import typescript from 'highlight.js/lib/languages/typescript'
 import xml from 'highlight.js/lib/languages/xml'
 import { marked } from 'marked'
+import { ElMessage } from 'element-plus'
+import { copyText } from '@/utils/browser'
 
 const props = defineProps<{ src: string; kind: 'markdown' | 'json' | 'code' | 'text'; fileName: string; fileSize: number }>()
 hljs.registerLanguage('bash', bash)
@@ -73,7 +75,12 @@ async function load(): Promise<void> {
 }
 
 async function copy(): Promise<void> {
-  await navigator.clipboard.writeText(text.value)
+  try {
+    await copyText(text.value)
+    ElMessage.success('文本已复制')
+  } catch (reason) {
+    ElMessage.error(reason instanceof Error ? reason.message : '复制失败，请手动复制')
+  }
 }
 
 watch(() => props.src, () => void load(), { immediate: true })

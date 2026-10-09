@@ -75,6 +75,13 @@
 
 在 Windows 防火墙允许 TCP 5000 后，其他局域网设备访问 `http://服务器局域网IP:5000`。
 
+### 浏览器兼容性
+
+- 推荐 Chrome / Edge 88+、Firefox 78+ 或 Safari 14+；前端生产代码按 ES2020 构建。
+- 支持通过普通 `http://局域网IP:端口` 浏览、上传和复制。上传任务 ID 不依赖 `crypto.randomUUID`；剪贴板 API 缺失、被浏览器策略关闭或权限被拒绝时，会自动使用安全的纯文本复制降级。
+- 自动复制最终仍可能被浏览器或企业策略完全禁止，此时界面会明确提示手动复制。公网部署仍应使用 HTTPS；兼容降级不会替代认证和传输加密。
+- 音视频编解码、全屏和文件预览能力取决于浏览器。功能代码对受限 Web API 做能力检测，不以浏览器版本推断能力。
+
 ### Linux
 
 ```bash
@@ -189,12 +196,15 @@ cd web && npm test
 # 需要已启动测试服务的 Edge 端到端测试
 DUFS_E2E_URL=http://127.0.0.1:5099 npm run test:e2e
 
+# 发布前兼容性测试应使用真实局域网 IP，避免 localhost 的可信来源特例
+DUFS_E2E_URL=http://192.168.31.13:5099 npm run test:e2e
+
 # Rust 全量测试和静态检查
 cargo test --all
 cargo clippy --all --all-targets -- -D warnings
 ```
 
-浏览器测试覆盖真实容量、目录读取、详细视图、Markdown 预览、真实上传和深色主题，并把截图写入 `docs/screenshots/`。
+浏览器测试覆盖真实容量、目录读取、详细视图、Markdown 预览、真实上传和深色主题，并把截图写入 `docs/screenshots/`。兼容性用例会在页面初始化前禁用 `crypto.randomUUID` 和 Clipboard API，验证普通 HTTP 下的上传、复制链接、复制文本以及无未处理页面异常。
 
 ## 已知限制
 

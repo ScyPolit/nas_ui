@@ -16,7 +16,7 @@ export default defineConfig({
       name: 'dufs-runtime-asset-prefix',
       enforce: 'post',
       transformIndexHtml(html) {
-        return html.replaceAll('./assets/', '__ASSETS_PREFIX__assets/')
+        return html.split('./assets/').join('__ASSETS_PREFIX__assets/')
       },
     },
   ],
@@ -29,7 +29,7 @@ export default defineConfig({
     outDir: '../assets',
     emptyOutDir: true,
     sourcemap: false,
-    target: 'es2022',
+    target: 'es2020',
     rollupOptions: {
       output: {
         entryFileNames: 'assets/[name].js',
