@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Clock3, Trash2 } from '@lucide/vue'
 import RecentFiles from '@/components/RecentFiles.vue'
 import { clearRecentViewed, getRecentViewed, removeRecentViewed } from '@/services/recentDb'
@@ -15,8 +15,14 @@ const records = ref<RecentViewedFile[]>([])
 const items = ref<RecentListItem[]>([])
 
 async function load(): Promise<void> {
-  records.value = await getRecentViewed(100)
-  items.value = records.value.map((item) => ({ ...item, time: item.viewedAt, category: categoryOf(item.name) }))
+  try {
+    records.value = await getRecentViewed(100)
+    items.value = records.value.map((item) => ({ ...item, time: item.viewedAt, category: categoryOf(item.name) }))
+  } catch (reason) {
+    records.value = []
+    items.value = []
+    ElMessage.warning(reason instanceof Error ? reason.message : '无法读取本地浏览历史')
+  }
 }
 
 function open(item: RecentListItem): void {

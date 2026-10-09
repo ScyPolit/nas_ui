@@ -28,6 +28,7 @@ import { useUploadsStore } from '@/stores/uploads'
 import type { PathItem, SortField, ViewMode } from '@/types'
 import { baseName, fileTypeLabel, isDirectory, joinPath, parentPath } from '@/utils/files'
 import { formatBytes, formatDate } from '@/utils/format'
+import { copyText } from '@/utils/browser'
 
 const props = defineProps<{ path?: string }>()
 const router = useRouter()
@@ -136,10 +137,14 @@ function download(item: PathItem): void {
 }
 
 async function copyLink(item: PathItem): Promise<void> {
-  const path = joinPath(currentPath.value, item.name)
-  const url = new URL(isDirectory(item) ? api.pathUrl(path, true) : api.fileUrl(path), location.origin)
-  await navigator.clipboard.writeText(url.toString())
-  ElMessage.success('链接已复制')
+  try {
+    const path = joinPath(currentPath.value, item.name)
+    const url = new URL(isDirectory(item) ? api.pathUrl(path, true) : api.fileUrl(path), location.origin)
+    await copyText(url.toString())
+    ElMessage.success('链接已复制')
+  } catch (reason) {
+    ElMessage.error(reason instanceof Error ? reason.message : '复制失败，请手动复制')
+  }
 }
 
 async function rename(item: PathItem): Promise<void> {

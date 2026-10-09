@@ -33,6 +33,10 @@ function load(): StoredPreferences {
   }
 }
 
+function prefersDark(): MediaQueryList | null {
+  return typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null
+}
+
 export const usePreferencesStore = defineStore('preferences', () => {
   const stored = load()
   const theme = ref<ThemeMode>(stored.theme)
@@ -43,23 +47,28 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const autoRefresh = ref(stored.autoRefresh)
   const showExtensions = ref(stored.showExtensions)
   const sidebarCollapsed = ref(stored.sidebarCollapsed)
-  const systemDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
+  const media = prefersDark()
+  const systemDark = ref(media?.matches ?? false)
   const isDark = computed(() => theme.value === 'dark' || (theme.value === 'system' && systemDark.value))
 
   function persist(): void {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        theme: theme.value,
-        defaultView: defaultView.value,
-        sortField: sortField.value,
-        sortOrder: sortOrder.value,
-        showThumbnails: showThumbnails.value,
-        autoRefresh: autoRefresh.value,
-        showExtensions: showExtensions.value,
-        sidebarCollapsed: sidebarCollapsed.value,
-      } satisfies StoredPreferences),
-    )
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          theme: theme.value,
+          defaultView: defaultView.value,
+          sortField: sortField.value,
+          sortOrder: sortOrder.value,
+          showThumbnails: showThumbnails.value,
+          autoRefresh: autoRefresh.value,
+          showExtensions: showExtensions.value,
+          sidebarCollapsed: sidebarCollapsed.value,
+        } satisfies StoredPreferences),
+      )
+    } catch {
+      // Private browsing and enterprise policies may disable persistent storage.
+    }
   }
 
   function applyTheme(): void {
@@ -71,11 +80,12 @@ export const usePreferencesStore = defineStore('preferences', () => {
     )
   }
 
-  const media = window.matchMedia('(prefers-color-scheme: dark)')
-  media.addEventListener('change', (event) => {
+  const onSystemThemeChange = (event: MediaQueryListEvent | MediaQueryList): void => {
     systemDark.value = event.matches
     applyTheme()
-  })
+  }
+  if (typeof media?.addEventListener === 'function') media.addEventListener('change', onSystemThemeChange)
+  else media?.addListener(onSystemThemeChange)
   watch(
     [theme, defaultView, sortField, sortOrder, showThumbnails, autoRefresh, showExtensions, sidebarCollapsed],
     () => {

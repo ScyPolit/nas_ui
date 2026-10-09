@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { Download, Info, Maximize, RotateCw, ZoomIn, ZoomOut } from '@lucide/vue'
+import { ElMessage } from 'element-plus'
 import { api } from '@/api/dufs'
 import { usePreviewStore } from '@/stores/preview'
 import { fileTypeLabel, previewKind } from '@/utils/files'
@@ -33,11 +34,20 @@ watch(
   },
 )
 
-function toggleFullscreen(): void {
+async function toggleFullscreen(): Promise<void> {
   const element = document.querySelector('.file-preview-dialog')
   if (!element) return
-  if (document.fullscreenElement) void document.exitFullscreen()
-  else void element.requestFullscreen()
+  try {
+    if (document.fullscreenElement && typeof document.exitFullscreen === 'function') {
+      await document.exitFullscreen()
+    } else if (typeof element.requestFullscreen === 'function') {
+      await element.requestFullscreen()
+    } else {
+      throw new Error('当前浏览器不支持全屏预览')
+    }
+  } catch (reason) {
+    ElMessage.warning(reason instanceof Error ? reason.message : '无法进入全屏预览')
+  }
 }
 </script>
 

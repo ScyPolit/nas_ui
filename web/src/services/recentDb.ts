@@ -6,7 +6,11 @@ const MAX_RECORDS = 100
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, 1)
+    if (typeof globalThis.indexedDB === 'undefined') {
+      reject(new Error('当前浏览器不支持本地浏览历史'))
+      return
+    }
+    const request = globalThis.indexedDB.open(DATABASE_NAME, 1)
     request.addEventListener('upgradeneeded', () => {
       const database = request.result
       if (!database.objectStoreNames.contains(STORE_NAME)) {

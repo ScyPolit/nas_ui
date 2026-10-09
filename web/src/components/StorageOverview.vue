@@ -20,6 +20,10 @@ let chart: ECharts | null = null
 let observer: ResizeObserver | null = null
 let themeObserver: MutationObserver | null = null
 
+function resizeChart(): void {
+  chart?.resize()
+}
+
 const usage = computed(() => {
   const disk = props.value?.disk
   return disk && disk.total_bytes > 0 ? Math.round((disk.used_bytes / disk.total_bytes) * 1000) / 10 : null
@@ -73,15 +77,22 @@ watch(() => props.value?.disk, () => void nextTick(renderChart), { deep: true })
 onMounted(() => {
   renderChart()
   if (chartElement.value) {
-    observer = new ResizeObserver(() => chart?.resize())
-    observer.observe(chartElement.value)
+    if (typeof globalThis.ResizeObserver === 'function') {
+      observer = new ResizeObserver(resizeChart)
+      observer.observe(chartElement.value)
+    } else {
+      window.addEventListener('resize', resizeChart)
+    }
   }
-  themeObserver = new MutationObserver(renderChart)
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  if (typeof globalThis.MutationObserver === 'function') {
+    themeObserver = new MutationObserver(renderChart)
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  }
 })
 onBeforeUnmount(() => {
   observer?.disconnect()
   themeObserver?.disconnect()
+  window.removeEventListener('resize', resizeChart)
   chart?.dispose()
 })
 </script>
