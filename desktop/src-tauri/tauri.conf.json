@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Dufs 网盘",
+  "version": "1.0.0",
+  "identifier": "com.scy.dufs.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost" },
+    "windows": [{
+      "label": "main",
+      "title": "Dufs 网盘",
+      "width": 1080,
+      "height": 720,
+      "minWidth": 860,
+      "minHeight": 620,
+      "center": true,
+      "resizable": true
+    }]
+  },
+  "bundle": {
+    "active": true,
+    "useLocalToolsDir": true,
+    "targets": ["nsis", "msi", "dmg", "appimage", "deb", "rpm"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "externalBin": ["binaries/dufs"],
+    "category": "Utility",
+    "shortDescription": "图形化管理 Dufs 局域网文件服务",
+    "longDescription": "使用图形界面配置、启动和管理 Dufs 局域网文件服务。",
+    "copyright": "Copyright Dufs contributors",
+    "windows": {
+      "nsis": { "installMode": "perMachine", "displayLanguageSelector": true, "languages": ["SimpChinese", "English"] },
+      "wix": { "language": "zh-CN" }
+    }
+  }
+}

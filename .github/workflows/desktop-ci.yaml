@@ -1,0 +1,66 @@
+name: Desktop CI
+
+on:
+  pull_request:
+    paths: ['desktop/**', 'src/**', 'Cargo.*', '.github/workflows/desktop-*.yaml']
+  push:
+    branches: [main]
+    paths: ['desktop/**', 'src/**', 'Cargo.*', '.github/workflows/desktop-*.yaml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            desktop/src-tauri -> target
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Build web assets
+        working-directory: web
+        run: npm ci && npm test && npm run build
+      - name: Build Dufs sidecar
+        run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Install and check desktop
+        working-directory: desktop
+        env:
+          TAURI_TARGET: ${{ matrix.target }}
+        run: |
+          npm ci
+          npm run check:version
+          npm test
+          npm run build
+          npm run prepare:sidecar
+          npm run tauri:build -- --target ${{ matrix.target }} --no-bundle
+

@@ -1,5 +1,7 @@
 # Dufs 现代化局域网网盘
 
+> 跨平台桌面发行版：仓库提供基于 Tauri 2 的中文配置向导、服务管理、系统托盘以及 Windows/macOS/Linux 原生安装包构建与 GitHub Draft Release 流程。安装、开发和发布说明见 [docs/desktop.md](docs/desktop.md)。
+
 基于 Dufs 0.46.0 的现代化局域网文件管理系统。它保留 Rust 文件服务器、WebDAV、Range、断点续传、权限控制和单文件部署能力，并提供简体中文的 Windows 11 风格网页文件管理器。
 
 适用于个人电脑、家庭 NAS、实验室服务器和可信局域网文件共享。服务端不需要数据库、Redis、Java 或 Node.js 运行时；Node.js 只参与前端构建。

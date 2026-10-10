@@ -1,0 +1,167 @@
+name: Desktop Release
+
+on:
+  push:
+    tags: ['desktop-v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing desktop-vX.Y.Z tag
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.ref.outputs.tag }}
+      sha: ${{ steps.ref.outputs.sha }}
+      version: ${{ steps.ref.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with: { fetch-depth: 0 }
+      - name: Fetch release tags
+        run: git fetch --force --tags
+      - id: ref
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then tag="$INPUT_TAG"; fi
+          [[ "$tag" =~ ^desktop-v([0-9]+\.[0-9]+\.[0-9]+)$ ]] || { echo "Invalid tag: $tag"; exit 1; }
+          git rev-parse "refs/tags/$tag" >/dev/null
+          sha=$(git rev-list -n 1 "$tag")
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+            artifact: windows-x64
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            bundles: dmg
+            artifact: macos-intel
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bundles: dmg
+            artifact: macos-arm64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb,rpm
+            artifact: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with: { ref: '${{ needs.resolve.outputs.sha }}' }
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: '${{ matrix.target }}' }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            desktop/src-tauri -> target
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Build embedded web UI
+        working-directory: web
+        run: npm ci && npm test && npm run build
+      - name: Build sidecar
+        run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Build installers
+        working-directory: desktop
+        env:
+          TAURI_TARGET: ${{ matrix.target }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          npm ci
+          npm run check:version
+          npm test
+          npm run prepare:sidecar
+          npm run tauri:build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Collect bundle output
+        shell: bash
+        run: |
+          mkdir upload
+          find "desktop/src-tauri/target/${{ matrix.target }}/release/bundle" -type f \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) -exec cp {} upload/ \;
+          test -n "$(find upload -type f -size +100k -print -quit)"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact }}
+          path: upload/*
+          if-no-files-found: error
+
+  release:
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with: { path: incoming }
+      - name: Validate and normalize artifacts
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          mkdir release
+          copy_one() { matches=( $1 ); [ "${#matches[@]}" -eq 1 ] && [ -s "${matches[0]}" ] || { echo "Expected exactly one: $1"; exit 1; }; cp "${matches[0]}" "$2"; }
+          copy_one 'incoming/windows-x64/*.exe' "release/DufsDesktop_${VERSION}_windows_x64_setup.exe"
+          copy_one 'incoming/windows-x64/*.msi' "release/DufsDesktop_${VERSION}_windows_x64.msi"
+          copy_one 'incoming/macos-intel/*.dmg' "release/DufsDesktop_${VERSION}_macos_intel.dmg"
+          copy_one 'incoming/macos-arm64/*.dmg' "release/DufsDesktop_${VERSION}_macos_arm64.dmg"
+          copy_one 'incoming/linux-x64/*.AppImage' "release/DufsDesktop_${VERSION}_linux_x64.AppImage"
+          copy_one 'incoming/linux-x64/*.deb' "release/DufsDesktop_${VERSION}_linux_amd64.deb"
+          copy_one 'incoming/linux-x64/*.rpm' "release/DufsDesktop_${VERSION}_linux_x86_64.rpm"
+          (cd release && sha256sum DufsDesktop_* | sort -k2 > SHA256SUMS.txt)
+          [ "$(find release -maxdepth 1 -type f | wc -l)" -eq 8 ]
+      - name: Create Chinese release notes
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          cat > release-notes.md <<EOF
+          # Dufs Desktop ${TAG}
+
+          Dufs 跨平台桌面管理程序。通过中文图形向导选择共享目录、访问范围和文件权限，并管理本机 Dufs 服务。
+
+          ## 下载说明
+          - Windows 10/11 x64：选择 setup.exe（推荐）或 MSI。
+          - macOS Intel：选择 macos_intel.dmg。
+          - macOS Apple Silicon：选择 macos_arm64.dmg。
+          - Linux x64：按发行版选择 AppImage、DEB 或 RPM。
+
+          首次启动后按照向导完成配置。卸载或升级不会删除用户选择的共享目录。文件完整性请用 SHA256SUMS.txt 校验。
+
+          未配置平台代码签名时，Windows 可能显示未知发布者提示；macOS 构建只有在仓库已配置 Apple 签名和公证凭据时才是正式公证版本。
+          EOF
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
+          name: Dufs Desktop ${{ needs.resolve.outputs.version }}
+          draft: true
+          generate_release_notes: true
+          body_path: release-notes.md
+          files: release/*
+
