@@ -47,7 +47,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             bundles: nsis,msi
             artifact: windows-x64
-          - os: macos-15-intel
+          - os: macos-latest
             target: x86_64-apple-darwin
             bundles: dmg
             artifact: macos-intel
