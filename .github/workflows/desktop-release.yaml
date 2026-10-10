@@ -87,6 +87,7 @@ jobs:
         run: cargo build --locked --release --target ${{ matrix.target }}
       - name: Build installers
         working-directory: desktop
+        shell: bash
         env:
           TAURI_TARGET: ${{ matrix.target }}
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
