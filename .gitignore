@@ -3,6 +3,11 @@
 .opencode
 /web/node_modules
 /web/coverage
+/desktop/node_modules
+/desktop/dist
+/desktop/src-tauri/target
+/desktop/src-tauri/binaries/*
+!/desktop/src-tauri/binaries/.gitkeep
 /artifacts
 /dist
 *.log
