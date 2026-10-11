@@ -6,3 +6,7 @@ export function formatUptime(seconds?: number): string {
 export function statusTitle(state: string): string {
   return ({ running: '服务运行中', error: '服务异常', stopped: '服务已停止' } as Record<string, string>)[state] || '状态检查中'
 }
+
+export function cloneSettings<T extends { permissions: Record<string, boolean> }>(value: T): T {
+  return { ...value, permissions: { ...value.permissions } }
+}
