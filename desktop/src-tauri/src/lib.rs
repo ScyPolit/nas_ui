@@ -247,10 +247,10 @@ fn validate_settings(settings: &Settings, check_port: bool) -> Result<(), String
 
 fn health_check(port: u16) -> bool {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
-    let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(500)) else {
+    let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(250)) else {
         return false;
     };
-    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(250)));
     if stream
         .write_all(b"GET /__dufs__/health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
         .is_err()
@@ -455,7 +455,7 @@ async fn start_service(
     for _ in 0..30 {
         if health_check(settings.port) {
             log_event(&app, "服务健康检查通过");
-            return service_status(state);
+            return service_status(state).await;
         }
         tokio_sleep(Duration::from_millis(200)).await;
     }
@@ -471,9 +471,9 @@ async fn tokio_sleep(duration: Duration) {
 }
 
 #[tauri::command]
-fn stop_service(app: AppHandle, state: State<'_, AppState>) -> Result<ServiceStatus, String> {
+async fn stop_service(app: AppHandle, state: State<'_, AppState>) -> Result<ServiceStatus, String> {
     stop_managed(&app, &state)?;
-    service_status(state)
+    service_status(state).await
 }
 
 #[tauri::command]
@@ -487,22 +487,43 @@ async fn restart_service(
 }
 
 #[tauri::command]
-fn service_status(state: State<'_, AppState>) -> Result<ServiceStatus, String> {
+async fn service_status(state: State<'_, AppState>) -> Result<ServiceStatus, String> {
     let settings = state
         .settings
         .lock()
         .map_err(|_| "配置状态锁已损坏")?
         .clone();
-    let slot = state.child.lock().map_err(|_| "服务状态锁已损坏")?;
-    let healthy = slot.is_some() && health_check(settings.port);
-    let (pid, uptime) = slot
-        .as_ref()
-        .map(|c| (Some(c.pid), Some(c.started.elapsed().as_secs())))
-        .unwrap_or((None, None));
+    let (pid, uptime) = {
+        let slot = state.child.lock().map_err(|_| "服务状态锁已损坏")?;
+        slot.as_ref()
+            .map(|child| (Some(child.pid), Some(child.started.elapsed().as_secs())))
+            .unwrap_or((None, None))
+    };
+    let port = settings.port;
+    let bind = settings.bind.clone();
+    let (healthy, lan_urls) = if pid.is_some() {
+        tauri::async_runtime::spawn_blocking(move || {
+            let healthy = health_check(port);
+            let urls = if healthy && bind != "127.0.0.1" {
+                lan_urls(&Settings {
+                    bind,
+                    port,
+                    ..Settings::default()
+                })
+            } else {
+                Vec::new()
+            };
+            (healthy, urls)
+        })
+        .await
+        .map_err(|e| format!("无法读取服务状态: {e}"))?
+    } else {
+        (false, Vec::new())
+    };
     Ok(ServiceStatus {
         state: if healthy {
             "running"
-        } else if slot.is_some() {
+        } else if pid.is_some() {
             "error"
         } else {
             "stopped"
@@ -511,10 +532,10 @@ fn service_status(state: State<'_, AppState>) -> Result<ServiceStatus, String> {
         pid,
         uptime_seconds: uptime,
         local_url: format!("http://127.0.0.1:{}", settings.port),
-        lan_urls: lan_urls(&settings),
+        lan_urls,
         message: if healthy {
             "服务运行正常".into()
-        } else if slot.is_some() {
+        } else if pid.is_some() {
             "服务进程存在，但健康检查失败".into()
         } else {
             "服务已停止".into()

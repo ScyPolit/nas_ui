@@ -1,6 +1,6 @@
 [package]
 name = "dufs-desktop"
-version = "1.0.1"
+version = "1.0.2"
 description = "Dufs cross-platform desktop manager"
 authors = ["Dufs contributors"]
 edition = "2021"
