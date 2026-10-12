@@ -6,6 +6,7 @@ Dufs 桌面版是现有文件服务器的图形管理外壳。它使用 Tauri 2 
 
 ### Windows 10/11 x64
 
+- 免安装使用可下载 `DufsDesktop_<版本>_windows_x64_portable.zip`，解压后双击 `DufsDesktopPortable.exe`。配置和日志保存在同目录的 `data` 文件夹，复制整个目录即可迁移。
 - 普通用户优先下载 `DufsDesktop_<版本>_windows_x64_setup.exe`，按 NSIS 安装向导完成安装。
 - 需要 MSI 部署时下载 `DufsDesktop_<版本>_windows_x64.msi`。
 - 未使用 Authenticode 签名的测试构建可能显示“未知发布者”。只有确认来源及 SHA256 后再运行。
@@ -80,6 +81,18 @@ npm run tauri:dev -- --target $env:TAURI_TARGET
 npm run tauri:build -- --target x86_64-pc-windows-msvc --bundles nsis,msi
 ```
 
+Windows portable 压缩包构建：
+
+```powershell
+cd desktop
+npm run portable:build
+npm run portable:test
+```
+
+产物位于 `artifacts/desktop/<版本>/DufsDesktop_<版本>_windows_x64_portable.zip`。压缩包包含桌面程序、Dufs sidecar、portable 标记、许可证和校验文件；用户无需安装 Rust 或 Node.js。Windows 10/11 需要系统已有 Microsoft Edge WebView2 Runtime。
+
+Windows Release 主程序使用 GUI 子系统，启动时不会显示终端窗口。Dufs sidecar 保持命令行程序格式以兼容独立使用，桌面程序通过 `CREATE_NO_WINDOW` 在后台启动它。`npm run check:windows-subsystems` 会验证两者的 PE 子系统，portable 构建、Windows CI、NSIS/MSI 发布都会执行该检查。
+
 Sidecar 必须位于 `desktop/src-tauri/binaries/dufs-<target-triple>[.exe]`。`prepare-sidecar.mjs` 会检查 PE、Mach-O 或 ELF 格式及可识别的目标架构后再复制。
 
 ## GitHub Releases
@@ -97,7 +110,7 @@ Sidecar 必须位于 `desktop/src-tauri/binaries/dufs-<target-triple>[.exe]`。`
 3. 在确认的提交上创建并推送 `desktop-vX.Y.Z` 标签。
 4. `desktop-release.yaml` 在四种原生 Runner 上构建七个安装包。
 5. 聚合任务校验每类产物恰好一个且非空，统一命名，生成排序后的 `SHA256SUMS.txt`。
-6. 工作流创建 Draft Release，由维护者检查后手动发布。
+6. 所有平台产物完整通过校验后，工作流创建正式 Release。
 
 手动触发必须输入已经存在的标签；工作流不会创建或推送标签，也始终构建该标签解析出的不可变提交。
 

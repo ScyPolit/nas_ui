@@ -23,6 +23,7 @@ use tauri_plugin_shell::{
 
 const CONFIG_VERSION: u32 = 1;
 const LOG_LIMIT: u64 = 2 * 1024 * 1024;
+const PORTABLE_MARKER: &str = "portable.mode";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,7 +115,21 @@ struct AppState {
     child: Mutex<Option<ManagedChild>>,
 }
 
+fn portable_data_dir_for(executable: &Path) -> Option<PathBuf> {
+    let root = executable.parent()?;
+    root.join(PORTABLE_MARKER)
+        .is_file()
+        .then(|| root.join("data"))
+}
+
+fn portable_data_dir() -> Option<PathBuf> {
+    portable_data_dir_for(&std::env::current_exe().ok()?)
+}
+
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(dir) = portable_data_dir() {
+        return Ok(dir.join("settings.json"));
+    }
     app.path()
         .app_config_dir()
         .map(|dir| dir.join("settings.json"))
@@ -122,6 +137,9 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn log_path(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(dir) = portable_data_dir() {
+        return Ok(dir.join("dufs-desktop.log"));
+    }
     app.path()
         .app_log_dir()
         .map(|dir| dir.join("dufs-desktop.log"))
@@ -698,4 +716,23 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Dufs desktop");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn portable_marker_selects_data_beside_executable() {
+        let root = std::env::temp_dir().join(format!("dufs-portable-test-{}", std::process::id()));
+        let executable = root.join("DufsDesktopPortable.exe");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        assert_eq!(portable_data_dir_for(&executable), None);
+        fs::write(root.join(PORTABLE_MARKER), []).unwrap();
+        assert_eq!(portable_data_dir_for(&executable), Some(root.join("data")));
+
+        fs::remove_dir_all(root).unwrap();
+    }
 }

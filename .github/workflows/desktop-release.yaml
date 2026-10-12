@@ -107,11 +107,22 @@ jobs:
           npm test
           npm run prepare:sidecar
           npm run tauri:build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Verify Windows executables do not open a terminal
+        if: runner.os == 'Windows'
+        working-directory: desktop
+        shell: powershell
+        run: npm run check:windows-subsystems -- -Target ${{ matrix.target }}
+      - name: Build Windows portable package
+        if: runner.os == 'Windows'
+        working-directory: desktop
+        shell: powershell
+        run: npm run portable:build -- -SkipBuild
       - name: Collect bundle output
         shell: bash
         run: |
           mkdir upload
           find "desktop/src-tauri/target/${{ matrix.target }}/release/bundle" -type f \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) -exec cp {} upload/ \;
+          if [ "${{ runner.os }}" = "Windows" ]; then cp artifacts/desktop/${{ needs.resolve.outputs.version }}/*_portable.zip upload/; fi
           test -n "$(find upload -type f -size +100k -print -quit)"
       - uses: actions/upload-artifact@v6
         with:
@@ -135,13 +146,14 @@ jobs:
           copy_one() { matches=( $1 ); [ "${#matches[@]}" -eq 1 ] && [ -s "${matches[0]}" ] || { echo "Expected exactly one: $1"; exit 1; }; cp "${matches[0]}" "$2"; }
           copy_one 'incoming/windows-x64/*.exe' "release/DufsDesktop_${VERSION}_windows_x64_setup.exe"
           copy_one 'incoming/windows-x64/*.msi' "release/DufsDesktop_${VERSION}_windows_x64.msi"
+          copy_one 'incoming/windows-x64/*_portable.zip' "release/DufsDesktop_${VERSION}_windows_x64_portable.zip"
           copy_one 'incoming/macos-intel/*.dmg' "release/DufsDesktop_${VERSION}_macos_intel.dmg"
           copy_one 'incoming/macos-arm64/*.dmg' "release/DufsDesktop_${VERSION}_macos_arm64.dmg"
           copy_one 'incoming/linux-x64/*.AppImage' "release/DufsDesktop_${VERSION}_linux_x64.AppImage"
           copy_one 'incoming/linux-x64/*.deb' "release/DufsDesktop_${VERSION}_linux_amd64.deb"
           copy_one 'incoming/linux-x64/*.rpm' "release/DufsDesktop_${VERSION}_linux_x86_64.rpm"
           (cd release && sha256sum DufsDesktop_* | sort -k2 > SHA256SUMS.txt)
-          [ "$(find release -maxdepth 1 -type f | wc -l)" -eq 8 ]
+          [ "$(find release -maxdepth 1 -type f | wc -l)" -eq 9 ]
       - name: Create Chinese release notes
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
@@ -165,7 +177,7 @@ jobs:
         with:
           tag_name: ${{ needs.resolve.outputs.tag }}
           name: Dufs Desktop ${{ needs.resolve.outputs.version }}
-          draft: true
+          draft: false
           generate_release_notes: true
           body_path: release-notes.md
           files: release/*
