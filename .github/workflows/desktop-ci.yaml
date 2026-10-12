@@ -63,4 +63,9 @@ jobs:
           npm run build
           npm run prepare:sidecar
           npm run tauri:build -- --target ${{ matrix.target }} --no-bundle
+      - name: Verify Windows executables do not open a terminal
+        if: runner.os == 'Windows'
+        working-directory: desktop
+        shell: powershell
+        run: npm run check:windows-subsystems -- -Target ${{ matrix.target }}
 

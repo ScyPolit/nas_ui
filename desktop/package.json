@@ -1,7 +1,7 @@
 {
   "name": "dufs-desktop",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,9 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "portable:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable.ps1",
+    "portable:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-portable.ps1",
+    "check:windows-subsystems": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-windows-subsystems.ps1",
     "check:version": "node scripts/check-version.mjs",
     "prepare:sidecar": "node scripts/prepare-sidecar.mjs"
   },
