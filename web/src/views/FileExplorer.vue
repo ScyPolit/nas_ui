@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Grid2X2,
   List,
+  LoaderCircle,
   PanelLeft,
   RefreshCw,
   Search,
@@ -46,9 +47,15 @@ const context = ref<{ x: number; y: number; item: PathItem | null } | null>(null
 const propertyItem = ref<PathItem | null>(null)
 const propertyOpen = ref(false)
 const dropActive = ref(false)
+const navigationPending = ref(false)
+const loadingFolderName = ref('')
 let refreshTimer: number | null = null
+let loadSequence = 0
 
 const currentPath = computed(() => String(props.path ?? '').split('/').filter(Boolean).join('/'))
+const browsingBusy = computed(() => navigationPending.value || files.loading)
+const showDirectoryLoading = computed(() => navigationPending.value || (files.loading && !files.items.length))
+const loadingLabel = computed(() => loadingFolderName.value || baseName(currentPath.value) || '共享空间')
 const sortedItems = computed(() => files.sortedItems(preferences.sortField, preferences.sortOrder))
 const breadcrumbs = computed(() => {
   const parts = currentPath.value.split('/').filter(Boolean)
@@ -74,16 +81,43 @@ const contextActions = computed(() => {
 })
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
   files.search = String(route.query.q ?? '')
   searchText.value = files.search
   selected.value = new Set()
   lastSelectedIndex.value = null
-  await files.load(currentPath.value, files.search)
+  try {
+    await files.load(currentPath.value, files.search)
+  } finally {
+    if (sequence === loadSequence) {
+      navigationPending.value = false
+      loadingFolderName.value = ''
+    }
+  }
+}
+
+async function navigateTo(path: string, label = ''): Promise<void> {
+  if (browsingBusy.value) return
+  const previousRoute = route.fullPath
+  navigationPending.value = true
+  loadingFolderName.value = label
+  context.value = null
+  try {
+    await router.push({ name: 'files', params: { path } })
+    if (route.fullPath === previousRoute) {
+      navigationPending.value = false
+      loadingFolderName.value = ''
+    }
+  } catch {
+    navigationPending.value = false
+    loadingFolderName.value = ''
+  }
 }
 
 function open(item: PathItem): void {
+  if (browsingBusy.value) return
   if (isDirectory(item)) {
-    void router.push({ name: 'files', params: { path: joinPath(currentPath.value, item.name) } })
+    void navigateTo(joinPath(currentPath.value, item.name), baseName(item.name))
   } else {
     preview.open(item, currentPath.value, sortedItems.value)
   }
@@ -112,6 +146,7 @@ function showContext(item: PathItem | null, event: MouseEvent): void {
 }
 
 async function handleContext(action: string): Promise<void> {
+  if (browsingBusy.value) return
   const item = context.value?.item
   context.value = null
   if (action === 'refresh') return load()
@@ -192,7 +227,7 @@ function runSearch(): void {
 }
 
 function goUp(): void {
-  void router.push({ name: 'files', params: { path: parentPath(currentPath.value) } })
+  void navigateTo(parentPath(currentPath.value))
 }
 
 function toggleSort(field: SortField): void {
@@ -212,6 +247,7 @@ async function handleDrop(event: DragEvent): Promise<void> {
 
 function keyboard(event: KeyboardEvent): void {
   if ((event.target as HTMLElement).matches('input, textarea, [contenteditable="true"]')) return
+  if (browsingBusy.value) return
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
     event.preventDefault()
     selected.value = new Set(sortedItems.value.map((item) => item.name))
@@ -262,21 +298,21 @@ onBeforeUnmount(() => {
 
     <div class="explorer-toolbar">
       <el-button-group>
-        <el-button :icon="ArrowLeft" title="后退" @click="router.back()" />
-        <el-button :icon="ArrowUp" :disabled="!currentPath" :title="t('explorer.up')" @click="goUp" />
+        <el-button :icon="ArrowLeft" :disabled="browsingBusy" title="后退" @click="router.back()" />
+        <el-button :icon="ArrowUp" :disabled="!currentPath || browsingBusy" :title="t('explorer.up')" @click="goUp" />
         <el-button :icon="RefreshCw" :loading="files.loading" :title="t('action.refresh')" @click="load" />
       </el-button-group>
 
       <nav class="breadcrumbs" aria-label="当前位置">
         <template v-for="(crumb, index) in breadcrumbs" :key="crumb.path">
-          <button type="button" @click="router.push({ name: 'files', params: { path: crumb.path } })">{{ crumb.label }}</button>
+          <button type="button" :disabled="browsingBusy" @click="navigateTo(crumb.path, crumb.label)">{{ crumb.label }}</button>
           <span v-if="index < breadcrumbs.length - 1">/</span>
         </template>
       </nav>
 
       <form class="directory-search" @submit.prevent="runSearch">
         <Search :size="16" />
-        <input v-model="searchText" :disabled="!files.permissions.search" :placeholder="t('explorer.searchPlaceholder')" />
+        <input v-model="searchText" :disabled="!files.permissions.search || browsingBusy" :placeholder="t('explorer.searchPlaceholder')" />
       </form>
 
       <button class="icon-button desktop-action" type="button" :class="{ active: treeVisible }" title="目录树" @click="treeVisible = !treeVisible">
@@ -295,8 +331,10 @@ onBeforeUnmount(() => {
       </el-dropdown>
     </div>
 
-    <div class="explorer-layout">
-      <aside v-if="treeVisible" class="tree-panel"><DirectoryTree /></aside>
+    <div class="explorer-layout" :class="{ 'is-loading-directory': browsingBusy }" :aria-busy="browsingBusy">
+      <aside v-if="treeVisible" class="tree-panel">
+        <DirectoryTree :disabled="browsingBusy" @navigate="navigateTo" />
+      </aside>
       <div
         class="explorer-surface"
         tabindex="-1"
@@ -333,6 +371,17 @@ onBeforeUnmount(() => {
           @context="showContext"
         />
       </div>
+      <Transition name="directory-loading">
+        <div v-if="showDirectoryLoading" class="directory-loading-overlay" role="status" aria-live="polite">
+          <div class="directory-loading-indicator">
+            <LoaderCircle :size="28" :stroke-width="2" />
+            <div>
+              <strong>正在打开文件夹</strong>
+              <span>{{ loadingLabel }}</span>
+            </div>
+          </div>
+        </div>
+      </Transition>
     </div>
 
     <div v-if="dropActive" class="drop-overlay"><Upload :size="36" /><strong>释放鼠标以上传到当前文件夹</strong></div>
